@@ -1,7 +1,21 @@
+---
+Name: searchplus
+Before: 'mysite/*'
+After: 'framework/*','cms/*'
+---
+
 ContentController:
   extensions:
     - SearchPlusSearchForm
 
-SiteTree:
-  extensions:
-    - SearchPlusSearchSiteTreeExtension
+
+SearchPlusModelAdmin:
+  set_managed_models:
+    - SearchHistory
+    - RecommendedSearchPlusSection
+
+SearchHistory:
+  set_separator: " | "
+  set_minimum_length: 4
+  set_number_of_keyword_repeats: 7
+  set_result_length: 30

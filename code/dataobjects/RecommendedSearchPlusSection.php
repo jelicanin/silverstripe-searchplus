@@ -32,15 +32,16 @@ class RecommendedSearchPlusSection Extends DataObject {
 
 	private static $default_sort = 'Sort, Title';
 
-	private static $searchable_fields = array(
+	public static $searchable_fields = array(
 		"Title"
 	);
 
-	private static $summary_fields = array(
-		"Title", "Sort"
+	public static $summary_fields = array(
+		"Title", 
+		"Sort"
 	);
 
-	private static $field_labels = array(
+	public static $field_labels = array(
 		"Sort" => "Sort Index"
 	);
 
@@ -55,10 +56,9 @@ class RecommendedSearchPlusSection Extends DataObject {
 	function onBeforeWrite() {
 		parent::onBeforeWrite();
 		if(!$this->ParentID) {
-			if($page = SearchPlusPage::get()->first()) {
+			if($page = SearchPlusPage::get()->First()) {
 				$this->ParentID = $page->ID;
-			}
-			else{
+			} else{
 				user_error("Make sure to create a SearchPlusPage", E_USER_NOTICE);
 			}
 		}

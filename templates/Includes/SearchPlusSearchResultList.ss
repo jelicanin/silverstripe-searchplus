@@ -1,16 +1,26 @@
-<h2 id="SearchPlusSearchResultListHeading">Search for <q>$Query</q> : $Results.TotalItems results </h2>
-<% include SearchPlusMoreThanOnePage %>
 <% if Results %>
-<ul id="SearchResults">
-<% loop Results %>
-	<li class="$EvenOdd $FirstLast <% if IsRecommended %>recommended<% end_if %>">
-		<h3><a href="$Link"><% if MenuTitle %>$HighlightedTitle<% end_if %></a></h3>
-		<p>$Content.ContextSummary(300) ...</p>
-		<a href="$Link" title="Read more about $Title.ATT">Read more &gt;&gt;</a>
-	</li>
-<% end_loop %>
+<ul id="SearchResults" class="search-results">
+    <% loop Results %>
+    <li class="$EvenOdd $FirstLast <% if IsRecommended %>recommended<% end_if %>">
+        <% if Image %>
+        <div class="img">
+            <a href="{$Link}?action_results=Search&ref=search-result-image">
+            <% with Image %>
+                <img src="$CroppedImage(100,100).URL" alt="$Title" class="trans-all" />
+            <% end_with %>
+            </a>
+        </div>
+        <% end_if %>
+        <h3>
+            <a href="{$Link}?action_results=Search&ref=search-result-title" title="{$Title}" class="trans-col">$HighlightedTitle</a>
+        </h3>
+        <% if Content %>
+        <p>$Content.ContextSummary</p>
+        <% end_if %>
+    </li>
+    <% end_loop %>
 </ul>
 <% else %>
-<p class="SearchPlusSearchResultListRegret">Sorry, no pages matched your search, please try again.</p>
+<p class="SearchPlusSearchResultListRegret"><% _t('SearchPlus.NORESULTS','Ups... Nemamo rezultata za vaš upit.') %></p>
 <% end_if %>
 <% include SearchPlusMoreThanOnePage %>

@@ -3,21 +3,21 @@
 	<h4>By Popularity (click on title to customise search phrase results)</h4>
 	<table summary="most popular search phrases by count" class="graphTable">
 		<tr>
-			<% with DataByCount %>
+			<% loop DataByCount %>
 			<td class="title">
-				<a href="admin/searchplus/SearchHistory/{$ParentID}/edit">$Title</a>
+				<a href="admin/searchplus/SearchHistory/EditForm/field/SearchHistory/item/{$ParentID}/edit">$Title</a>
 			</td>
-			<td class="background"><div style="width: {$Width}%;" class="foreground">$Count</div></td></tr>
-			<% end_with %>
+			<td class="background"><div style="width: {$Width}%;" class="foreground">&nbsp;($Count)</div></td></tr>
+			<% end_loop %>
 		</tr>
 	</table>
 	<h4>By Name</h4>
 	<table summary="most popular search phrases by title" class="graphTable">
 		<tr>
-			<% with DataByTitle %>
+			<% loop DataByTitle %>
 			<td class="title">$Title</td>
-			<td class="background"><div style="width: {$Width}%;" class="foreground">$Count</div></td></tr>
-			<% end_with %>
+			<td class="background"><div style="width: {$Width}%;" class="foreground">&nbsp;($Count)</div></td></tr>
+			<% end_loop %>
 		</tr>
 	</table>
 </div>

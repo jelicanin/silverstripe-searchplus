@@ -19,26 +19,26 @@ class SearchPlusPage extends Page {
 		"RecommendedSearchPlusSections" => "RecommendedSearchPlusSection"
 	);
 
-	public function canCreate($member = null) {
-		return SearchPlusPage::get()->count ? false : true;
+	public function canCreate($member = NULL) {
+		return !DataObject::get_one("SiteTree", "ClassName = 'SearchPlusPage'");
 	}
 
-	public function canDelete($member = null) {
+	public function canDelete($member = NULL) {
 		return false;
 	}
 
-	private static $result_length = 10;
+	protected static $result_length = 10;
+		static function set_result_length($v) { $v = intval($v); if($v < 1) {user_error("SearchPlusPage::set_result_length expects an integer greater than zero", E_USER_WARNING);} self::$result_length = $v; }
+		static function get_result_length() { return self::$result_length; }
 
 	public function getCMSFields($params = null) {
 		$fields = parent::getCMSFields($params);
+
 		$fields->addFieldToTab(
 			"Root.RecommendedSections",
-			new GridField(
-				$name = "RecommendedSearchPlusSections",
-				$sourceClass = "Recommended Extras",
-				RecommendedSearchPlusSection::get()
-			)
+			$this->getRecommendedSearchPlusSectionsField()
 		);
+		
 		$fields->addFieldToTab(
 			"Root.PopularSearchPhrases",
 			new LiteralField(
@@ -49,6 +49,19 @@ class SearchPlusPage extends Page {
 		return $fields;
 	}
 
+	protected function getRecommendedSearchPlusSectionsField(){
+		$gridFieldConfig = GridFieldConfig_RelationEditor::create();
+		$gridFieldConfig2 = GridFieldConfig::create()->addComponents(
+			new GridFieldToolbarHeader(),
+			new GridFieldSortableHeader(),
+			new GridFieldDataColumns(),
+			new GridFieldPaginator(20),
+			new GridFieldEditButton(),
+			new GridFieldDetailForm()
+		);
+		$source = $this->RecommendedSearchPlusSections();
+		return new GridField("RecommendedSearchPlusSections", "Recommended Search Sections", $source, $gridFieldConfig);
+	}
 
 
 
@@ -61,16 +74,22 @@ class SearchPlusPage_Controller extends Page_Controller {
 		Requirements::javascript("searchplus/javascript/searchpluspage.js");
 	}
 
-	private static $search_history_object = null;
+    private static $allowed_actions = array(
+        'results',
+        'SearchForm',
+        'popularsearchwords'
+    );
 
-	function Form() {
-		return $this->SearchPlusForm("MainSearchForm", "MainSearch", "");
-	}
+	protected static $search_history_object = null;
 
-	function results($data){
+	// function SearchForm() {
+	// 	return $this->SearchPlusForm("MainSearchForm", "MainSearch", "");
+	// }
+
+	function results($data = null){
 		if(isset($data["Search"]) || isset($data["MainSearch"])) {
 			// there is a search
-			Requirements::themedCSS("searchpluspage_searchresults", "searchplus");
+			Requirements::themedCSS("searchpluspage_searchresults");
 			if(isset($data["MainSearch"]) || !isset($data["Search"])) {
 				$data["Search"] = $data["MainSearch"];
 			}
@@ -81,7 +100,7 @@ class SearchPlusPage_Controller extends Page_Controller {
 				self::$search_history_object = SearchHistory::add_entry($data["Search"]);
 				if(self::$search_history_object) {
 					if(self::$search_history_object->RedirectTo && self::$search_history_object->RedirectTo != self::$search_history_object->Title) {
-						$this->redirect(
+						Controller::curr()->redirect(
 							str_replace(
 								"Search=".urlencode(self::$search_history_object->Title),
 								"Search=".urlencode(self::$search_history_object->RedirectTo),
@@ -107,10 +126,10 @@ class SearchPlusPage_Controller extends Page_Controller {
 			$results = $form->getResults();
 			$query = $form->getSearchQuery();
 			$startingPosition = isset($_REQUEST["start"]) ? $_REQUEST["start"] : 0;
-			$endingPosition = $startingPosition + Config::inst()->get("SearchPlusPage", "result_length");
+			$endingPosition = $startingPosition + SearchPlusPage::get_result_length();
 			$startingPosition++;
 			if($results) {
-				$total = $results->TotalItems();
+				$total = $results->count();
 			}
 			else {
 				$total = 0;
@@ -122,7 +141,8 @@ class SearchPlusPage_Controller extends Page_Controller {
 			if($total) {
 				foreach($results as $result) {
 					$title = $result->getTitle();
-					$dbField = DBField::create_field($className = "Text", $title);
+					$dbField = Text::create("HighlightedTitle");
+					$dbField->setValue($title);					
 					$result->HighlightedTitle = $dbField->ContextSummary();
 					$result->IsRecommended = false;
 					$matchArrayResults[$result->ClassName.$result->ID] = $result->ClassName.$result->ID;
@@ -139,10 +159,11 @@ class SearchPlusPage_Controller extends Page_Controller {
 				'Total' => $total,
 				'HasResults' => $total ? true : false,
 				'Recommendations' => $this->Recommendations(),
-				'RecommendedSearchPlusSection' => $this->dataRecord->RecommendedSearchPlusSections(),
+				'RecommendedSearchPlusSection' => $this->RecommendedSearchPlusSections(),
 			);
-			$this->Title = 'Search Results';
-			$this->MenuTitle = 'Search Results';
+			// $this->Title = 'Search Results';
+			// $this->MenuTitle = 'Search Results';
+			$this->MetaTitle = $this->Title .": ". Convert::raw2att($query);
 			return $this->customise($data)->renderWith(array('SearchPlusPage_results', 'Page'));
 		}
 		return Array();
@@ -158,7 +179,7 @@ class SearchPlusPage_Controller extends Page_Controller {
 		return Permission::check("ADMIN");
 	}
 
-	function PopularSearchWordsForAllUsers($days = 100, $limit = 7) {
+	function PopularSearchWordsForAllUsers($days = 30, $limit = 7) {
 		$do = $this->getPopularSearchWords($days, $limit, $mergeRedirects = true);
 		return $do->DataByCount;
 	}
@@ -168,53 +189,58 @@ class SearchPlusPage_Controller extends Page_Controller {
 			Security::permissionFailure($this, _t('Security.PERMFAILURE',' This page is secured and you need administrator rights to access it. Enter your credentials below and we will send you right along.'));
 			return;
 		}
-		Requirements::themedCSS("popularsearches", "searchplus");
+		Requirements::themedCSS("popularsearches");
 		$days = intval($HTTPRequest->param("ID"));
 		if(!$days) {
-			$days = 100;
+			$days = 30;
 		}
 		$limit = intval($HTTPRequest->param("OtherID")+0);
 		if(!$limit) $limit++;
 		$do = $this->getPopularSearchWords($days, $limit);
 		$page->MenuTitle = $do->Title;
+		$do->MetaTitle = $do->Title;
 		$do->Title = $do->Title;
 		return $this->customise($do)->renderWith(array('SearchPlusPage_popularsearches', 'Page'));
 	}
 
 	protected function getPopularSearchWords($days, $limit, $mergeRedirects = false) {
+		$bt = defined('DB::USE_ANSI_SQL') ? "\"" : "`";
 		$extraWhere = '';
 		if($mergeRedirects) {
 			$extraWhere = " AND {$bt}RedirectTo{$bt} = '' OR {$bt}RedirectTo{$bt} IS NULL";
 		}
+		
 		$data = DB::query("
-			SELECT COUNT(\"SearchHistoryLog\".\"ID\") count, \"SearchHistory\".\"RedirectTo\" RedirectTo, \"SearchHistory\".\"Title\" title, \"SearchHistory\".\"ID\" id
-			FROM \"SearchHistoryLog\"
-				INNER JOIN \"SearchHistory\" ON \"SearchHistory\".\"ID\" = \"SearchHistoryLog\".\"SearchedForID\"
-			WHERE \"SearchHistoryLog\".\"Created\" > ( NOW() - INTERVAL $days DAY ) ".$extraWhere."
-			GROUP BY \"SearchHistory\".\"ID\"
+			SELECT COUNT({$bt}SearchHistoryLog{$bt}.{$bt}ID{$bt}) count, {$bt}SearchHistory{$bt}.{$bt}RedirectTo{$bt} RedirectTo, {$bt}SearchHistory{$bt}.{$bt}Title{$bt} title, {$bt}SearchHistory{$bt}.{$bt}ID{$bt} id
+			FROM {$bt}SearchHistoryLog{$bt}
+				INNER JOIN {$bt}SearchHistory{$bt} ON {$bt}SearchHistory{$bt}.{$bt}ID{$bt} = {$bt}SearchHistoryLog{$bt}.{$bt}SearchedForID{$bt}
+			WHERE {$bt}SearchHistoryLog{$bt}.{$bt}Created{$bt} > ( NOW() - INTERVAL $days DAY ) ".$extraWhere."
+			GROUP BY {$bt}SearchHistory{$bt}.{$bt}ID{$bt}
 			ORDER BY count DESC
 			LIMIT 0, $limit
 		");
-		$do = new DataObject();
+
+		$do = new ArrayData(array());
 		$do->Title = "Search phrase popularity, $days days $limit entries";
 		$do->DataByCount = new ArrayList();
 		$do->DataByTitle = new ArrayList();
 		$do->Limit = $limit;
 		$do->Days = $days;
 		$list = array();
+
 		foreach($data as $key => $row) {
 			if(!$key) {
 				$max = $row["count"];
 			}
 			if($mergeRedirects) {
 				$data = DB::query("
-					SELECT COUNT(\"SearchHistoryLog\".\"ID\") count
-					FROM \"SearchHistoryLog\"
-						INNER JOIN \"SearchHistory\"
-							ON \"SearchHistory\".\"ID\" = \"SearchHistoryLog\".\"SearchedForID\"
-					WHERE \"SearchHistoryLog\".\"Created\" > ( NOW() - INTERVAL $days DAY )
-						AND \"SearchHistory\".\"RedirectTo\" = '".$row["title"]."'
-					GROUP BY \"SearchHistory\".\"RedirectTo\"
+					SELECT COUNT({$bt}SearchHistoryLog{$bt}.{$bt}ID{$bt}) count
+					FROM {$bt}SearchHistoryLog{$bt}
+						INNER JOIN {$bt}SearchHistory{$bt}
+							ON {$bt}SearchHistory{$bt}.{$bt}ID{$bt} = {$bt}SearchHistoryLog{$bt}.{$bt}SearchedForID{$bt}
+					WHERE {$bt}SearchHistoryLog{$bt}.{$bt}Created{$bt} > ( NOW() - INTERVAL $days DAY )
+						AND {$bt}SearchHistory{$bt}.{$bt}RedirectTo{$bt} = '".$row["title"]."'
+					GROUP BY {$bt}SearchHistory{$bt}.{$bt}RedirectTo{$bt}
 					ORDER BY count
 					DESC LIMIT 1
 				");
@@ -233,9 +259,11 @@ class SearchPlusPage_Controller extends Page_Controller {
 					"Link" => $this->Link()."results/?Search=".urldecode($row["title"])."&amp;action_results=Search"
 				)
 			);
+
 			$list[$row["title"]] = $subDataSet;
 			$do->DataByCount->push($subDataSet );
 		}
+
 		ksort($list);
 		foreach($list as $subDataSet ) {
 			$do->DataByTitle->push($subDataSet);
